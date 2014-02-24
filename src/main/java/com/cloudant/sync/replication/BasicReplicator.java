@@ -15,78 +15,45 @@
 package com.cloudant.sync.replication;
 
 import com.cloudant.mazha.CouchClient;
-import com.cloudant.mazha.CouchConfig;
-import com.cloudant.sync.datastore.Datastore;
 import com.cloudant.sync.datastore.DatastoreExtended;
 import com.cloudant.sync.notifications.ReplicationCompleted;
 import com.cloudant.sync.notifications.ReplicationErrored;
-import com.cloudant.common.Log;
 import com.google.common.base.Preconditions;
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 
-import java.net.URI;
-
 class BasicReplicator implements Replicator {
 
-    private final static String LOG_TAG = "BasicReplicator";
+    final protected Replication replication;
 
-    protected enum ReplicationType {
-        PULL,
-        PUSH
-    }
-    final protected ReplicationType replicationType;
-
-    protected final DatastoreExtended datastore;
-    protected final CouchClient couchClient;
     protected Thread strategyThread;
     protected ReplicationStrategy strategy;
+    private String name;
 
     // Writes need synchronising.
     private State state = null;
 
-    private String name;
-    
     private final EventBus eventBus = new EventBus();
 
-    public BasicReplicator(URI source, Datastore target) {
-        this.replicationType = ReplicationType.PULL;
-
-        this.datastore = (DatastoreExtended) target;
+    public BasicReplicator(Replication replication) {
         this.state = State.PENDING;
-
-        CouchConfig couchConfig = ReplicatorURIUtils.extractCouchConfig(source);
-        String databaseName = ReplicatorURIUtils.extractDatabaseName(source);
-        this.couchClient = new CouchClient(couchConfig, databaseName);
-
-        name = String.format("%s <-- %s", target.getDatastoreName(), databaseName);
-    }
-
-    public BasicReplicator(Datastore source, URI target) {
-        this.replicationType = ReplicationType.PUSH;
-
-        this.datastore = (DatastoreExtended) source;
-        this.state = State.PENDING;
-
-        CouchConfig couchConfig = ReplicatorURIUtils.extractCouchConfig(target);
-        String databaseName = ReplicatorURIUtils.extractDatabaseName(target);
-        this.couchClient = new CouchClient(couchConfig, databaseName);
-
-        name = String.format("%s --> %s", source.getDatastoreName(), databaseName);
+        this.replication = replication;
+        this.name = replication.getName();
     }
 
     protected ReplicationStrategy getReplicationStrategy() {
-        switch (this.replicationType) {
+        CouchClient couchClient = new CouchClient(replication.couchConfig, replication.couchDbName);
+        switch (this.replication.type) {
             case PULL:
                 return new BasicPullStrategy(
                         new CouchClientWrapper(couchClient),
-                        this.datastore,
+                        (DatastoreExtended)this.replication.datastore,
                         name
                 );
             case PUSH:
                 return new BasicPushStrategy(
                         new CouchClientWrapper(couchClient),
-                        this.datastore,
+                        (DatastoreExtended)this.replication.datastore,
                         name
                 );
             default:

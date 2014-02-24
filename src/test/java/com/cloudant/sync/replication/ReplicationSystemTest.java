@@ -14,13 +14,13 @@
 
 package com.cloudant.sync.replication;
 
+import com.cloudant.common.Log;
 import com.cloudant.common.SystemTest;
 import com.cloudant.mazha.ChangesResult;
 import com.cloudant.mazha.CloudantConfig;
 import com.cloudant.mazha.CouchConfig;
 import com.cloudant.sync.datastore.DatastoreExtended;
 import com.cloudant.sync.datastore.DatastoreManager;
-import com.cloudant.common.Log;
 import com.cloudant.sync.util.TestUtils;
 import org.junit.After;
 import org.junit.Assert;
@@ -138,17 +138,14 @@ public class ReplicationSystemTest {
         String remoteDatabaseName = "mbta_stops";
         manager = new DatastoreManager(datastoreManagerPath);
         DatastoreExtended datastoreExtended = (DatastoreExtended) manager.openDatastore("mbta_trips");
-        URI uri = CloudantConfig.defaultConfig().getURI(remoteDatabaseName);
-
-        pull(uri, datastoreExtended);
+        pull(CloudantConfig.defaultConfig(), remoteDatabaseName, datastoreExtended);
     }
 
     public void pull(String pullSource, String pullTarget, CouchConfig dbConfig) throws Exception {
-        URI uri = dbConfig.getURI(pullSource);
         DatastoreExtended datastoreExtended = (DatastoreExtended) manager.openDatastore(pullTarget);
 
         Log.i(LOG_TAG, "Pulling ...");
-        pull(uri, datastoreExtended);
+        pull(dbConfig, pullSource, datastoreExtended);
         Log.i(LOG_TAG, "Pull done!");
     }
 
@@ -161,10 +158,9 @@ public class ReplicationSystemTest {
 
     public void push(String pushSource, String pushTarget, CouchConfig dbConfig) throws Exception {
         DatastoreExtended datastoreExtended = (DatastoreExtended) manager.openDatastore(pushSource);
-        URI uri = dbConfig.getURI(pushTarget);
 
         Log.i(LOG_TAG, "Pushing ...");
-        push(datastoreExtended, uri);
+        push(datastoreExtended, dbConfig, pushTarget);
         Log.i(LOG_TAG, "Push done!");
     }
 
@@ -175,10 +171,11 @@ public class ReplicationSystemTest {
         Log.i(LOG_TAG, "Assert done!");
     }
 
-    private void pull(URI uri, DatastoreExtended datastoreExtended) throws
+    private void pull(CouchConfig couchConfig, String dbName, DatastoreExtended datastoreExtended) throws
             InterruptedException {
         TestReplicationListener listener = new TestReplicationListener();
-        Replicator pullReplicator = ReplicatorFactory.oneway(uri, datastoreExtended);
+        Replication replication = new Replication(Replication.Type.PULL, datastoreExtended, couchConfig, dbName);
+        Replicator pullReplicator = ReplicatorFactory.oneway(replication);
         pullReplicator.getEventBus().register(listener);
         pullReplicator.start();
 
@@ -189,10 +186,11 @@ public class ReplicationSystemTest {
         Assert.assertFalse(listener.errorCalled);
     }
 
-    private void push(DatastoreExtended datastoreExtended, URI uri) throws
+    private void push(DatastoreExtended datastoreExtended, CouchConfig couchConfig, String dbName) throws
             InterruptedException {
         TestReplicationListener listener = new TestReplicationListener();
-        Replicator pushReplicator = ReplicatorFactory.oneway(datastoreExtended, uri);
+        Replication replication = new Replication(Replication.Type.PUSH, datastoreExtended, couchConfig, dbName);
+        Replicator pushReplicator = ReplicatorFactory.oneway(replication);
         pushReplicator.getEventBus().register(listener);
         pushReplicator.start();
 

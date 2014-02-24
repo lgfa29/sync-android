@@ -74,8 +74,4 @@ public abstract class ReplicationTestBase extends CouchTestBase {
         String replacement = "$1_$2";
         return dbName.replaceAll(regex, replacement).toLowerCase();
     }
-
-    public URI getURI() throws URISyntaxException {
-        return this.getCouchConfig().getURI(getDbName());
-    }
 }

@@ -88,6 +88,14 @@ public class CouchConfig {
         return config;
     }
 
+    public CouchConfig(String protocol, String host, int port) {
+        this.protocol = protocol;
+        this.host = host;
+        this.port = port;
+        this.username = null;
+        this.password = null;
+    }
+
 	public CouchConfig(String protocol,
                        String host,
                        int port,

@@ -15,25 +15,27 @@
 package com.cloudant.sync.replication;
 
 import com.cloudant.common.RequireRunningCouchDB;
+import com.cloudant.mazha.CouchConfig;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import java.net.URI;
-
 @Category(RequireRunningCouchDB.class)
 public class PullReplicatorTest extends ReplicationTestBase {
 
-    URI source;
     BasicReplicator replicator;
 
     @Before
     public void setUp() throws Exception {
         super.setUp();
-        source = getURI();
-        replicator = (BasicReplicator)ReplicatorFactory.oneway(source, datastore);
+
+        CouchConfig couchConfig = new CouchConfig("http", "127.0.0.1", 5984);
+        Replication pullReplication = new Replication(Replication.Type.PULL,
+                datastore, couchConfig, this.getDbName());
+
+        replicator = (BasicReplicator)ReplicatorFactory.oneway(pullReplication);
         prepareTwoDocumentsInRemoteDB();
     }
 
@@ -52,7 +54,7 @@ public class PullReplicatorTest extends ReplicationTestBase {
     @Test
     public void start_StartedThenComplete() throws InterruptedException {
         TestReplicationListener listener = new TestReplicationListener();
-        Assert.assertEquals(BasicReplicator.ReplicationType.PULL, replicator.replicationType);
+        Assert.assertEquals(Replication.Type.PULL, replicator.replication.type);
         Assert.assertEquals(Replicator.State.PENDING, replicator.getState());
         replicator.getEventBus().register(listener);
         replicator.start();

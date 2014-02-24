@@ -14,49 +14,51 @@
 
 package com.cloudant.sync.replication;
 
-import com.cloudant.mazha.CouchClient;
+import com.cloudant.mazha.CouchConfig;
 import com.cloudant.sync.datastore.Datastore;
 import com.cloudant.sync.datastore.DatastoreExtended;
 import com.cloudant.sync.notifications.ReplicationCompleted;
 import com.cloudant.sync.notifications.ReplicationErrored;
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
-
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.net.URI;
 import java.net.URISyntaxException;
 
 import static org.mockito.Mockito.*;
 
 public class BasicReplicatorMockTest {
 
-    URI uri;
     DatastoreExtended mockDatastore;
+    Replication pullReplication;
+    Replication pushReplication;
     ReplicationStrategy mockStrategy;
     Listener mockListener;
     TestReplicator replicator;
 
     @Before
     public void setUp() throws Exception {
-        uri = new URI("http://127.0.0.1:5984/db1");
+        CouchConfig couchConfig = new CouchConfig("http", "127.0.0.1", 5984);
         mockDatastore = mock(DatastoreExtended.class);
+        pullReplication = new Replication(Replication.Type.PULL, mockDatastore, couchConfig, "db1");
+        pushReplication = new Replication(Replication.Type.PUSH, mockDatastore, couchConfig, "db1");
+
         mockStrategy = mock(ReplicationStrategy.class);
         when(mockStrategy.getEventBus()).thenReturn(new EventBus());
         mockListener = mock(Listener.class);
-        replicator = new TestReplicator(uri, mockDatastore, mockStrategy);
 
         // mockStrategy always needs to be ready to start
         when(mockStrategy.isReplicationTerminated()).thenReturn(true);
+
+        replicator = new TestReplicator(pullReplication, mockStrategy);
     }
 
     @Test
     public void constructor() throws Exception {
         Assert.assertEquals(Replicator.State.PENDING, replicator.getState());
         Assert.assertNotNull(replicator.getDatastore());
-        Assert.assertNotNull(replicator.getCouchClient());
         Assert.assertNull(replicator.strategyThread());
     }
 
@@ -292,16 +294,16 @@ public class BasicReplicatorMockTest {
 
     @Test
     public void getReplicationStrategy_typeIsPULL_BasicPullStrategy() {
-        BasicReplicator replicator = new BasicReplicator(uri, mockDatastore);
-        Assert.assertEquals(BasicReplicator.ReplicationType.PULL, replicator.replicationType);
+        BasicReplicator replicator = new BasicReplicator(pullReplication);
+        Assert.assertEquals(Replication.Type.PULL, replicator.replication.type);
         ReplicationStrategy strategy = replicator.getReplicationStrategy();
         Assert.assertTrue(strategy instanceof BasicPullStrategy);
     }
 
     @Test
     public void getReplicationStrategy_typeIsPUSH_BasicPushStrategy() {
-        BasicReplicator replicator = new BasicReplicator(mockDatastore, uri);
-        Assert.assertEquals(BasicReplicator.ReplicationType.PUSH, replicator.replicationType);
+        BasicReplicator replicator = new BasicReplicator(pushReplication);
+        Assert.assertEquals(Replication.Type.PUSH, replicator.replication.type);
         ReplicationStrategy strategy = replicator.getReplicationStrategy();
         Assert.assertTrue(strategy instanceof BasicPushStrategy);
     }
@@ -310,8 +312,8 @@ public class BasicReplicatorMockTest {
 
         final ReplicationStrategy strategy;
 
-        public TestReplicator(URI uri, Datastore datastore, ReplicationStrategy strategy) {
-            super(uri, datastore);
+        public TestReplicator(Replication replication, ReplicationStrategy strategy) {
+            super(replication);
             this.strategy = strategy;
         }
 
@@ -328,12 +330,8 @@ public class BasicReplicatorMockTest {
             this.strategyThread.join();
         }
 
-        CouchClient getCouchClient() {
-            return this.couchClient;
-        }
-
         Datastore getDatastore() {
-            return this.datastore;
+            return this.replication.datastore;
         }
     }
 
@@ -372,13 +370,11 @@ public class BasicReplicatorMockTest {
             throws URISyntaxException, InterruptedException {
         Listener listener = new Listener();
 
-        URI uri = new URI("http://127.0.0.1:5984/db1");
-        DatastoreExtended mockDatastore = mock(DatastoreExtended.class);
         ReplicationStrategy mockStrategy = mock(ReplicationStrategy.class);
         when(mockStrategy.isReplicationTerminated()).thenReturn(true);
         when(mockStrategy.getEventBus()).thenReturn(new EventBus());
 
-        TestReplicator replicator = new TestReplicator(uri, mockDatastore, mockStrategy);
+        TestReplicator replicator = new TestReplicator(pullReplication, mockStrategy);
         replicator.getEventBus().register(listener);
         replicator.start();
 
@@ -398,13 +394,11 @@ public class BasicReplicatorMockTest {
             throws URISyntaxException, InterruptedException {
         Listener listener = new Listener();
 
-        URI uri = new URI("http://127.0.0.1:5984/db1");
-        DatastoreExtended mockDatastore = mock(DatastoreExtended.class);
         ReplicationStrategy mockStrategy = mock(ReplicationStrategy.class);
         when(mockStrategy.isReplicationTerminated()).thenReturn(true);
         when(mockStrategy.getEventBus()).thenReturn(new EventBus());
 
-        TestReplicator replicator = new TestReplicator(uri, mockDatastore, mockStrategy);
+        TestReplicator replicator = new TestReplicator(pullReplication, mockStrategy);
         replicator.getEventBus().register(listener);
         replicator.start();
 

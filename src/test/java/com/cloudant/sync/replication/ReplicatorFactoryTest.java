@@ -14,6 +14,7 @@
 
 package com.cloudant.sync.replication;
 
+import com.cloudant.mazha.CouchConfig;
 import com.cloudant.sync.datastore.Datastore;
 import com.cloudant.sync.datastore.DatastoreExtended;
 import org.junit.Assert;
@@ -26,24 +27,28 @@ import static org.mockito.Mockito.mock;
 
 public class ReplicatorFactoryTest {
 
-    URI uri;
     Datastore mockDatastore;
+    Replication pullReplication;
+    Replication pushReplication;
 
     @Before
     public void setUp() throws Exception {
+        CouchConfig couchConfig = new CouchConfig("http", "127.0.0.1", 5984);
         mockDatastore = mock(DatastoreExtended.class);
-        uri = new URI("http://127.0.0.1:5984/test");
+        pullReplication = new Replication(Replication.Type.PULL, mockDatastore, couchConfig, "db1");
+        pushReplication = new Replication(Replication.Type.PUSH, mockDatastore, couchConfig, "db1");
+
     }
 
     @Test
     public void oneway_datastoreAndURI_pullReplicatorReturned() {
-        Replicator replicator = ReplicatorFactory.oneway(mockDatastore, uri);
+        Replicator replicator = ReplicatorFactory.oneway(pullReplication);
         Assert.assertTrue(replicator instanceof BasicReplicator);
     }
 
     @Test
     public void oneway_datastoreAndURI_pushReplicatorReturned() {
-        Replicator replicator = ReplicatorFactory.oneway(uri, mockDatastore);
+        Replicator replicator = ReplicatorFactory.oneway(pushReplication);
         Assert.assertTrue(replicator instanceof BasicReplicator);
     }
 }
