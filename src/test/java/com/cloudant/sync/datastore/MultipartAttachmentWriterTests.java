@@ -2,6 +2,10 @@ package com.cloudant.sync.datastore;
 
 import com.cloudant.sync.util.TestUtils;
 
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
