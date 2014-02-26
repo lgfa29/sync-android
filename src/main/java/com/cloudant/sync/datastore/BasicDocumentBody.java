@@ -23,7 +23,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-public final class BasicDocumentBody implements DocumentBody {
+final class BasicDocumentBody implements DocumentBody {
 
     private byte[] bytes;
     private Map<String, Object> map;
