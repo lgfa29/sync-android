@@ -1,4 +1,4 @@
-package com.cloudant.sync.attachments;
+package com.cloudant.sync.datastore;
 
 import java.io.InputStream;
 
@@ -10,6 +10,6 @@ public class Attachment {
     public String name;
     public String contentType;
     public InputStream data;
-
+    public long length;
 
 }
