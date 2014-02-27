@@ -8,6 +8,10 @@ import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 
 /**
@@ -49,14 +53,15 @@ public class MultipartAttachmentWriterTests {
             DocumentRevision doc = datastore.createDocument(bodyOne);
             ArrayList<Attachment> attachments = new ArrayList<Attachment>();
 
-            Attachment att0 = new Attachment();
-            att0.name = "attachment0";
-            att0.contentType = "image/jpeg";
-            byte[] bytes = "this is some data".getBytes();
-            att0.data = new ByteArrayInputStream(bytes);
-            att0.length = bytes.length;
-
-            attachments.add(att0);
+            for (int i=0; i<1000; i++) {
+                Attachment att0 = new Attachment();
+                att0.name = "attachment" + (int)(Math.random()*1000000);
+                att0.contentType = "image/jpeg";
+                byte[] bytes = ("this is some data for "+att0.name).getBytes();
+                att0.data = new ByteArrayInputStream(bytes);
+                att0.length = bytes.length;
+                attachments.add(att0);
+            }
 
             MultipartAttachmentWriter mpw = new MultipartAttachmentWriter(datastore, doc, attachments);
             ByteArrayOutputStream bos = new ByteArrayOutputStream();

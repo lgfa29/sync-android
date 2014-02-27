@@ -5,9 +5,11 @@ import com.cloudant.sync.util.JSONUtils;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Created by tomblench on 24/02/2014.
@@ -17,9 +19,11 @@ public class MultipartAttachmentWriter extends InputStream {
     MultipartAttachmentWriter(Datastore datastore, DocumentRevision revision, List<Attachment> attachments) {
 
         Map<String, Object> map = revision.getBody().asMap();
-        HashMap<String, Object> atts = new HashMap<String, Object>();
+        TreeMap<String, Object> atts = new TreeMap<String, Object>();
         // add the attachments entry to the body
         map.put("_attachments", atts);
+
+        // get the ordering right here
         for (Attachment a : attachments) {
             HashMap<String, Object> att = new HashMap<String, Object>();
             atts.put(a.name, att);
@@ -27,6 +31,9 @@ public class MultipartAttachmentWriter extends InputStream {
             att.put("content_type", a.contentType);
             att.put("length",a.length);
         }
+
+        Collections.sort(attachments);
+
         DocumentBody newBody = DocumentBodyFactory.create(map);
         DocumentRevision newRevision = null;
         try {
