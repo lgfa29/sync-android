@@ -13,6 +13,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.UUID;
 
 /**
  * Created by tomblench on 24/02/2014.
@@ -55,9 +56,15 @@ public class MultipartAttachmentWriterTests {
 
             for (int i=0; i<1000; i++) {
                 Attachment att0 = new Attachment();
-                att0.name = "attachment" + (int)(Math.random()*1000000);
+                att0.name = "attachment" + UUID.randomUUID();
                 att0.contentType = "image/jpeg";
-                byte[] bytes = ("this is some data for "+att0.name).getBytes();
+                StringBuilder s = new StringBuilder();
+                s.append("this is some data for ");
+                s.append(att0.name);
+                for (int c=0;c<Math.random()*100;c++) {
+                    s.append("+");
+                }
+                byte[] bytes = (s.toString()).getBytes();
                 att0.data = new ByteArrayInputStream(bytes);
                 att0.length = bytes.length;
                 attachments.add(att0);

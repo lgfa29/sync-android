@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -19,7 +20,7 @@ public class MultipartAttachmentWriter extends InputStream {
     MultipartAttachmentWriter(Datastore datastore, DocumentRevision revision, List<Attachment> attachments) {
 
         Map<String, Object> map = revision.getBody().asMap();
-        TreeMap<String, Object> atts = new TreeMap<String, Object>();
+        LinkedHashMap<String, Object> atts = new LinkedHashMap<String, Object>();
         // add the attachments entry to the body
         map.put("_attachments", atts);
 
@@ -31,8 +32,6 @@ public class MultipartAttachmentWriter extends InputStream {
             att.put("content_type", a.contentType);
             att.put("length",a.length);
         }
-
-        Collections.sort(attachments);
 
         DocumentBody newBody = DocumentBodyFactory.create(map);
         DocumentRevision newRevision = null;
@@ -76,9 +75,15 @@ public class MultipartAttachmentWriter extends InputStream {
 
     private ArrayList<InputStream> components;
 
-    public int read() {
-        // TODO call read with 1 byte
-        return 0;
+    public int read() throws java.io.IOException {
+        byte[] buf = new byte[1];
+        int amountRead = read(buf);
+        // will be 0 or EOF
+        if (amountRead != 1) {
+            return amountRead;
+        }
+        // return the character we read
+        return buf[0];
     }
 
     @Override

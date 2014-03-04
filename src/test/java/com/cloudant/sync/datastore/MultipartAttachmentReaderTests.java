@@ -17,11 +17,17 @@ public class MultipartAttachmentReaderTests {
     @Test
     public void TestReader() throws FileNotFoundException, IOException {
 
-        int[] sizes = {4,5,7,12,127};
+        int[] sizes = {1,4,5,7,12,127,1270};
+        //int[] sizes = {1};
+        //int[] sizes = {1270};
 
         for (int i=0;i<sizes.length;i++) {
-            MultipartAttachmentReader mpr = new MultipartAttachmentReader("--vusjhiawhakmyunbewwympozpvpmufyn".getBytes());
-            File f = new File("/Users/tomblench/testoffsets1");
+            MultipartAttachmentReader mpr = new MultipartAttachmentReader("--nftjykeoeiyhopgldlwuzaimzahcdvlh".getBytes(), "/tmp");
+            File f = new File("/Users/tomblench/testoffsets3");
+//            MultipartAttachmentReader mpr = new MultipartAttachmentReader("--vusjhiawhakmyunbewwympozpvpmufyn".getBytes());
+//            File f = new File("/Users/tomblench/testoffsets1");
+
+
             FileInputStream fis = new FileInputStream(f);
             int bufSize = sizes[i];
             byte[] buf = new byte[bufSize];
@@ -31,7 +37,10 @@ public class MultipartAttachmentReaderTests {
             }
             System.out.println("bufsiz "+sizes[i]);
             Assert.assertEquals(1002, mpr.getBoundaryCount());
-            System.out.println(mpr.streams);
+            Assert.assertEquals(1002, mpr.sections.size());
+            Assert.assertEquals(mpr.actualAttachments, mpr.signalledAttachments);
+
+            System.out.println(mpr.sections);
         }
     }
 
