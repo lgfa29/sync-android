@@ -125,6 +125,17 @@ public class MultipartAttachmentReader extends OutputStream {
     }
 
     @Override
+    public void write(byte[] b) throws IOException {
+        this.write(b, 0, b.length);
+    }
+    @Override
+    public void write(int b) throws IOException {
+        byte buf[] = new byte[1];
+        buf[0] = (byte)b;
+        this.write(buf, 1, 1);
+    }
+
+    @Override
     public void write(byte[] b, int off, int len) throws IOException{
         List<Integer> boundaries;
         boundaries = new ArrayList<Integer>();
@@ -273,18 +284,9 @@ public class MultipartAttachmentReader extends OutputStream {
         startNewSection();
     }
 
-    @Override
-    public void write(byte[] b) throws IOException {
-        this.write(b, 0, b.length);
-    }
-
     public int getBoundaryCount() {
         return boundaryCount;
     }
 
-    @Override
-    public void write(int b) {
-        // TODO
-    }
 
 }
