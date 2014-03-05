@@ -4,27 +4,29 @@ import com.cloudant.sync.util.JSONUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
+
+import sun.misc.BASE64Encoder;
 
 /**
  * Created by tomblench on 24/02/2014.
  */
 public class MultipartAttachmentReader extends OutputStream {
 
-    private class Section {
-        public Section() {
+    protected class Section {
+        public Section() throws IOException {
+            limit = -1;
             try {
                 md5 = MessageDigest.getInstance("MD5");
             } catch (NoSuchAlgorithmException e) {
@@ -42,15 +44,16 @@ public class MultipartAttachmentReader extends OutputStream {
             offset += curSkip;
             len -= curSkip;
             // would we go over our limit?
-            /*
-            if (bytesWritten + len > limit) {
-                len -= (limit - bytesWritten);
+            if (limit != -1 && bytesWritten + len > limit) {
+                len = (limit - bytesWritten);
                 len = Math.max(0, len);
-            }*/
+            }
             if (stream != null) {
                 bytesWritten += len;
                 stream.write(input, offset, len);
-                md5.update(input, offset, len);
+                if (md5 != null) {
+                    md5.update(input, offset, len);
+                }
             }
         }
         public int skip;
@@ -60,6 +63,8 @@ public class MultipartAttachmentReader extends OutputStream {
         public String tempFilename;
         public String filename;
         public OutputStream stream;
+        public String encoding;
+        public Exception error;
         public String toString(){return stream.toString();}
     }
 
@@ -101,7 +106,7 @@ public class MultipartAttachmentReader extends OutputStream {
     public int signalledAttachments;
     public int actualAttachments;
 
-    MultipartAttachmentReader(byte[] boundary, String attachmentsDirectory) {
+    MultipartAttachmentReader(byte[] boundary, String attachmentsDirectory) throws IOException {
 
         // check we can save attachments
         this.attachmentsDirectory = new File(attachmentsDirectory);
@@ -128,11 +133,8 @@ public class MultipartAttachmentReader extends OutputStream {
                 boundaries.add(i+1);
                 boundaryCount++;
                 System.out.println("Matched at off " + i);
-                // next four bytes - \r\n\r\n or --\r\n
             }
         }
-//        System.out.println("+++"+new String(b)+"+++");
-        // any new boundaries?
 
         if (boundaries.size() > 0) {
             for (int i=0; i<boundaries.size(); i++) {
@@ -159,7 +161,7 @@ public class MultipartAttachmentReader extends OutputStream {
             currentSection.write(b, off, len);
         }
     }
-    private void processExistingSectionAndStartNewSection() throws FileNotFoundException, IOException {
+    private void processExistingSection() throws IOException {
         // if it was the body, check that it's in this format:
         // content-type: application/json
         //
@@ -169,9 +171,8 @@ public class MultipartAttachmentReader extends OutputStream {
 
         // if it was an attachment:
         // - check it's the right length
-        // - truncate it if we wrote the boundary
+        // - check the md5
         // - decompress if needed
-        // - check the sha
 
         if (section == 1) {
             // json payload
@@ -185,13 +186,11 @@ public class MultipartAttachmentReader extends OutputStream {
                 int start = m.end();
                 int length = bodyBytes.length - boundary.length - start -2; // -2 for crlf
                 // just for printing...
-                //String payload = new String(bodyBytes, start, length);
                 byte[] payload = new byte[length];
                 System.arraycopy(bodyBytes, start, payload, 0, length);
                 System.out.println(payload);
                 json = JSONUtils.deserialize(payload);
                 for (Map.Entry<String, Object> o: ((Map<String, Object>)json.get("_attachments")).entrySet()) {
-                    //System.out.println("^^^ "+o);
                     orderedAttachments.add(o);
                     signalledAttachments++;
                 }
@@ -202,29 +201,64 @@ public class MultipartAttachmentReader extends OutputStream {
             System.out.println("Looking at "+att.getKey());
             actualAttachments++;
             currentSection.filename = att.getKey();
-            int sectionLength = currentSection.bytesWritten - boundary.length - 2; // two crlfs (skipped) after boundary, one after content
-            int expectedLength = (Integer)((Map<String, Object>)(att.getValue())).get("length");
+            int sectionLength = currentSection.bytesWritten; // two crlfs (skipped) after boundary, one after content
+            int expectedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length") != null ?
+                    ((Map<String, Object>)(att.getValue())).get("encoded_length") :
+                    ((Map<String, Object>)(att.getValue())).get("length"));
+
             // check length
             if (expectedLength != sectionLength) {
-                System.out.println("%%%%%%%%%%%ERROR "+expectedLength +", "+sectionLength);
+                currentSection.error = new Exception("Actual length of " + sectionLength + " bytes did not match expected length of " + expectedLength + " bytes.");
+                return;
             }
-            // TODO check md-5
-        }
 
-        // clean up old file
-        if (currentSection.tempFilename != null) {
-            currentSection.stream.close();
-            RandomAccessFile trunc = new RandomAccessFile(currentSection.tempFilename, "rw");
-            trunc.getChannel().truncate(currentSection.bytesWritten - boundary.length - 2);
-            trunc.close();
+            // check MD5
+            byte[] actualMd5 = currentSection.md5.digest();
+            String actualMd5Str = "md5-"+(new BASE64Encoder().encode(actualMd5));
+            String expectedMd5Str = (String)((Map<String, Object>)(att.getValue())).get("digest");
+            if (!actualMd5Str.equals(expectedMd5Str)) {
+                currentSection.error = new Exception("Actual MD5 of " + actualMd5Str + " did not match expected MD5 of " + expectedMd5Str + ".");
+                return;
+            }
+
+            // unzip if it was encoded
+            if ("gzip".equals(currentSection.encoding)) {
+                try {
+                    int bufSiz = 1024;
+                    byte buf[] = new byte[bufSiz];
+                    GZIPInputStream gzis = new GZIPInputStream(new FileInputStream(currentSection.tempFilename));
+                    FileOutputStream fos = new FileOutputStream(currentSection.tempFilename + "_uncomp");
+                    int bytesRead;
+                    while((bytesRead = gzis.read(buf)) != -1) {
+                        fos.write(buf, 0, bytesRead);
+                    }
+                } catch (IOException ioe) {
+                    currentSection.error = new Exception("IOException "+ioe+" whilst attempting to decompress gzip part");
+                    return;
+                }
+            }
+
+            // TODO move files to the blob store with the right names
         }
+    }
+
+    private void startNewSection() throws FileNotFoundException, IOException {
 
         currentSection = new Section();
-        if (section > 0) {
+
+        if (section > 0 && section-1 < orderedAttachments.size()) {
+            // get attachment for this section
+            Map.Entry<String, Object> att = orderedAttachments.get(section -1);
+            String encoding = (String)((Map<String, Object>)(att.getValue())).get("encoding");
+            boolean compressed = "gzip".equals(encoding);
+            currentSection.encoding = encoding;
+            int expectedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length") != null ?
+                    ((Map<String, Object>)(att.getValue())).get("encoded_length") :
+                    ((Map<String, Object>)(att.getValue())).get("length"));
             // cook up a temp filename until we know what the real one is
-//            currentSection.filename = new File(attachmentsDirectory, "tempfile"+UUID.randomUUID().toString()).toString();
             currentSection.tempFilename = new File(attachmentsDirectory, "tempfile"+section).toString();
             currentSection.stream = new FileOutputStream(currentSection.tempFilename);
+            currentSection.limit = expectedLength;
             // skip crlfcrlf
             currentSection.skip = 4;
         } else {
@@ -232,6 +266,11 @@ public class MultipartAttachmentReader extends OutputStream {
         }
         sections.add(currentSection);
         section++;
+    }
+
+    private void processExistingSectionAndStartNewSection() throws FileNotFoundException, IOException {
+        processExistingSection();
+        startNewSection();
     }
 
     @Override

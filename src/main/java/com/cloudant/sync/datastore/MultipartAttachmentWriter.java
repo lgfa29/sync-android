@@ -3,7 +3,11 @@ package com.cloudant.sync.datastore;
 import com.cloudant.sync.util.JSONUtils;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.security.DigestException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
+import sun.misc.BASE64Encoder;
 
 /**
  * Created by tomblench on 24/02/2014.
@@ -31,6 +37,7 @@ public class MultipartAttachmentWriter extends InputStream {
             att.put("follows", true);
             att.put("content_type", a.contentType);
             att.put("length",a.length);
+            att.put("digest","md5-"+(new BASE64Encoder().encode(a.md5)));
         }
 
         DocumentBody newBody = DocumentBodyFactory.create(map);
@@ -74,6 +81,9 @@ public class MultipartAttachmentWriter extends InputStream {
     private int currentComponentIdx;
 
     private ArrayList<InputStream> components;
+
+    private MessageDigest md5;
+
 
     public int read() throws java.io.IOException {
         byte[] buf = new byte[1];
