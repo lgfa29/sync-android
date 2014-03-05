@@ -22,7 +22,7 @@ public class MultipartAttachmentReaderTests {
 
         for (int i=0;i<sizes.length;i++) {
             MultipartAttachmentReader mpr = new MultipartAttachmentReader("--nftjykeoeiyhopgldlwuzaimzahcdvlh".getBytes(), "/tmp");
-            File f = new File("/Users/tomblench/testoffsets3");
+            File f = new File("fixture/multipart_1000_atts.mime");
             FileInputStream fis = new FileInputStream(f);
             int bufSize = sizes[i];
             byte[] buf = new byte[bufSize];
@@ -45,7 +45,7 @@ public class MultipartAttachmentReaderTests {
         int bufSize = 1024;
 
         MultipartAttachmentReader mpr = new MultipartAttachmentReader("--eb2a76a538bace45331bda0f2bb92a18".getBytes(), "/tmp");
-        File f = new File("/Users/tomblench/multipart_with_atts.json");
+        File f = new File("fixture/multipart_from_couch_with_gzip.mime");
 
         FileInputStream fis = new FileInputStream(f);
         byte[] buf = new byte[bufSize];
