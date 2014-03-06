@@ -2,10 +2,12 @@ package com.cloudant.sync.datastore;
 
 import com.cloudant.sync.util.JSONUtils;
 
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.codec.binary.Hex;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -16,8 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
-
-import sun.misc.BASE64Encoder;
 
 /**
  * Created by tomblench on 24/02/2014.
@@ -164,7 +164,8 @@ public class MultipartAttachmentReader extends OutputStream {
                 }
             }
         } else if (currentSectionIndex > 1){
-            // get attachment for this offset
+            // we've finished writing this stream
+            currentSection.stream.close();
             actualAttachmentCount++;
 
             // check length
@@ -176,7 +177,8 @@ public class MultipartAttachmentReader extends OutputStream {
 
             // check MD5
             byte[] actualMd5 = currentSection.md5.digest();
-            String actualMd5Str = "md5-"+(new BASE64Encoder().encode(actualMd5));
+
+            String actualMd5Str = "md5-"+(new String(new Base64().encode(actualMd5)));
             String expectedMd5Str = currentSection.digest;
             if (!actualMd5Str.equals(expectedMd5Str)) {
                 currentSection.error = new Exception("Actual MD5 of " + actualMd5Str + " did not match expected MD5 of " + expectedMd5Str + ".");
@@ -185,11 +187,14 @@ public class MultipartAttachmentReader extends OutputStream {
 
             // unzip if it was encoded
             if ("gzip".equals(currentSection.encoding)) {
+                GZIPInputStream gzis = null;
+                FileOutputStream fos = null;
                 try {
                     int bufSiz = 1024;
                     byte buf[] = new byte[bufSiz];
-                    GZIPInputStream gzis = new GZIPInputStream(new FileInputStream(currentSection.tempFilename));
-                    FileOutputStream fos = new FileOutputStream(currentSection.tempFilename + "_uncomp");
+                    gzis = new GZIPInputStream(new FileInputStream(currentSection.tempFilename));
+                    currentSection.tempFilename += "_uncomp";
+                    fos = new FileOutputStream(currentSection.tempFilename);
                     int bytesRead;
                     while((bytesRead = gzis.read(buf)) != -1) {
                         fos.write(buf, 0, bytesRead);
@@ -197,14 +202,51 @@ public class MultipartAttachmentReader extends OutputStream {
                 } catch (IOException ioe) {
                     currentSection.error = new Exception("IOException "+ioe+" whilst attempting to decompress gzip part");
                     return;
+                } finally {
+                    if (gzis != null)
+                        gzis.close();
+                    if (fos != null) {
+                        fos.close();
+                    }
                 }
             }
 
-            // TODO move files to the blob store with the right names
+            // move files to the blob store with the right names
+            FileInputStream shaFis = null;
+            MessageDigest sha1;
+            try {
+                sha1 = MessageDigest.getInstance("SHA-1");
+                int bufSiz = 1024;
+                byte buf[] = new byte[bufSiz];
+                shaFis = new FileInputStream(currentSection.tempFilename);
+                int bytesRead;
+                while((bytesRead = shaFis.read(buf)) != -1) {
+                    sha1.update(buf, 0, bytesRead);
+                }
+            } catch (NoSuchAlgorithmException e) {
+                currentSection.error = new Exception("Cannot initialise SHA-1, did not move "+currentSection.tempFilename);
+                return;
+            } catch (IOException ioe) {
+                currentSection.error = new Exception("IOException "+ioe+", did not move "+currentSection.tempFilename);
+                return;
+            } finally {
+                if (shaFis != null) {
+                    shaFis.close();
+                }
+            }
+            // got sha, move file to its final resting place
+            File oldFile = new File(currentSection.tempFilename);
+            File newFile = new File(attachmentsDirectory, new String(new Hex().encode(sha1.digest())));
+            currentSection.filename = newFile.toString();
+            boolean ok = oldFile.renameTo(newFile);
+            if (!ok) {
+                currentSection.error = new Exception("Error moving file from "+currentSection.tempFilename+" to "+currentSection.filename);
+            }
+
         }
     }
 
-    private void startNewSection() throws FileNotFoundException, IOException {
+    private void startNewSection() throws IOException {
         // get attachment for this section
         Map.Entry<String, Object> att = getAttachmentForCurrentSection();
 
@@ -232,7 +274,7 @@ public class MultipartAttachmentReader extends OutputStream {
         }
     }
 
-    private void processExistingSectionAndStartNewSection() throws FileNotFoundException, IOException {
+    private void processExistingSectionAndStartNewSection() throws IOException {
         processExistingSection();
         sections.add(currentSection);
         currentSection = new Section();
