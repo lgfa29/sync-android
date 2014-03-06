@@ -33,8 +33,8 @@ public class MultipartAttachmentReaderTests {
             System.out.println("bufsiz "+sizes[i]);
             Assert.assertEquals(1002, mpr.getBoundaryCount());
             Assert.assertEquals(1002, mpr.sections.size());
-            Assert.assertEquals(mpr.actualAttachments, mpr.signalledAttachments);
-            //System.out.println(mpr.sections);
+            Assert.assertEquals(mpr.getActualAttachmentCount(), mpr.getSignalledAttachmentCount());
+            System.out.println(mpr.sections);
         }
     }
 

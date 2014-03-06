@@ -24,104 +24,53 @@ import sun.misc.BASE64Encoder;
  */
 public class MultipartAttachmentReader extends OutputStream {
 
-    protected class Section {
-        public Section() throws IOException {
-            limit = -1;
-            try {
-                md5 = MessageDigest.getInstance("MD5");
-            } catch (NoSuchAlgorithmException e) {
-                throw new RuntimeException("Cannot initialise MD5");
-            }
-        }
-        public void write(byte[] input, int offset, int len) throws IOException {
-            int curSkip = Math.min(len, skip);
-            int nextSkip = skip - curSkip;
-            if (nextSkip > 0) {
-                skip = nextSkip;
-            } else {
-                skip = 0;
-            }
-            offset += curSkip;
-            len -= curSkip;
-            // would we go over our limit?
-            if (limit != -1 && bytesWritten + len > limit) {
-                len = (limit - bytesWritten);
-                len = Math.max(0, len);
-            }
-            if (stream != null) {
-                bytesWritten += len;
-                stream.write(input, offset, len);
-                if (md5 != null) {
-                    md5.update(input, offset, len);
-                }
-            }
-        }
-        public int skip;
-        public int limit;
-        public int bytesWritten;
-        public MessageDigest md5;
-        public String tempFilename;
-        public String filename;
-        public OutputStream stream;
-        public String encoding;
-        public Exception error;
-        public String toString(){return stream.toString();}
-    }
+    // body needs to be application/json
+    private Pattern contentTypeRegex;
 
-    private class Matcher {
-        private byte[] toMatch;
-        private byte[] circularBuffer;
-        private int off = 0;
+    // the deserialised JSON for the body
+    private Map<String, Object> json;
 
-        private byte[] potentialMatch;
-
-        public Matcher(byte[] toMatch) {
-            this.toMatch = toMatch;
-            this.circularBuffer = new byte[toMatch.length];
-        }
-
-        // put the next byte into the circular buffer and see if we have a match yet
-        public boolean match(byte c) {
-            circularBuffer[off++] = c;
-            off %= toMatch.length;
-            for (int i=0; i<toMatch.length; i++) {
-                if (toMatch[i] != circularBuffer[(i+off) % toMatch.length])
-                    return false;
-                }
-            return true;
-            }
-        }
-
+    // where to write attachments to
     private File attachmentsDirectory;
 
+    // mime boundary stuff
     private byte[] boundary;
     private int boundaryCount = 0;
-
     private Matcher boundaryMatcher;
-    Section currentSection;
-    public List<Section> sections;
-    private int section;
-    private Map<String, Object> json;
-    List<Map.Entry<String, Object>> orderedAttachments;
-    public int signalledAttachments;
-    public int actualAttachments;
+
+    // section being written and MD5d
+    // it helps to keep track of the section and the index so we can find the matching attachment
+    private Section currentSection;
+    private int currentSectionIndex;
+    public final List<Section> sections;
+
+    // attachment stuff
+    // the attachments as signalled in the body
+    public final List<Map.Entry<String, Object>> orderedAttachments;
+    private int signalledAttachmentCount; // how many we are supposed to have
+    private int actualAttachmentCount;    // how many we actually got
 
     MultipartAttachmentReader(byte[] boundary, String attachmentsDirectory) throws IOException {
-
-        // check we can save attachments
+        // check we can save attachments before going any further
         this.attachmentsDirectory = new File(attachmentsDirectory);
         if (!(this.attachmentsDirectory.isDirectory() && this.attachmentsDirectory.canWrite())) {
             throw new IllegalArgumentException("The directory "+attachmentsDirectory+" does not exist or is not writable");
         }
+
+        contentTypeRegex = Pattern.compile("^\r\ncontent-type:( )*application/json\r\n\r\n",
+                Pattern.MULTILINE|Pattern.CASE_INSENSITIVE);
+
         this.boundary = boundary;
         boundaryMatcher = new Matcher(boundary);
+
         currentSection = new Section();
         currentSection.stream = new ByteArrayOutputStream();
+        currentSectionIndex = 0;
         sections = new ArrayList<Section>();
+
         orderedAttachments = new ArrayList<Map.Entry<String, Object>>();
-        signalledAttachments = 0;
-        actualAttachments = 0;
-        section = 0;
+        signalledAttachmentCount = 0;
+        actualAttachmentCount = 0;
     }
 
     @Override
@@ -172,6 +121,18 @@ public class MultipartAttachmentReader extends OutputStream {
             currentSection.write(b, off, len);
         }
     }
+
+    // sections look like:
+    // 0: initial boundary
+    // 1: main json payload
+    // 2..n-2: n attachments
+    private Map.Entry<String, Object> getAttachmentForCurrentSection() {
+        if (currentSectionIndex > 1 && currentSectionIndex -2 < orderedAttachments.size()) {
+            return orderedAttachments.get(currentSectionIndex -2);
+        }
+        return null;
+    }
+
     private void processExistingSection() throws IOException {
         // if it was the body, check that it's in this format:
         // content-type: application/json
@@ -185,12 +146,13 @@ public class MultipartAttachmentReader extends OutputStream {
         // - check the md5
         // - decompress if needed
 
-        if (section == 1) {
+        Map.Entry<String, Object> att = getAttachmentForCurrentSection();
+
+        if (att == null) {
             // json payload
             byte[] bodyBytes = ((ByteArrayOutputStream)currentSection.stream).toByteArray();
             String str = new String(bodyBytes);
-            Pattern p = Pattern.compile("^\r\ncontent-type:( )+application/json\r\n\r\n", Pattern.MULTILINE|Pattern.CASE_INSENSITIVE);
-            java.util.regex.Matcher m = p.matcher(str);
+            java.util.regex.Matcher m = contentTypeRegex.matcher(str);
             Boolean matches = m.find();
             if (matches) {
                 // payload starts at the end of this match and goes up to the start of the boundary
@@ -203,14 +165,13 @@ public class MultipartAttachmentReader extends OutputStream {
                 json = JSONUtils.deserialize(payload);
                 for (Map.Entry<String, Object> o: ((Map<String, Object>)json.get("_attachments")).entrySet()) {
                     orderedAttachments.add(o);
-                    signalledAttachments++;
+                    signalledAttachmentCount++;
                 }
             }
-        } else if (section > 1 && section-2 < orderedAttachments.size()) {
+        } else {
             // get attachment for this offset
-            Map.Entry<String, Object> att = orderedAttachments.get(section -2);
             System.out.println("Looking at "+att.getKey());
-            actualAttachments++;
+            actualAttachmentCount++;
             currentSection.filename = att.getKey();
             int sectionLength = currentSection.bytesWritten; // two crlfs (skipped) after boundary, one after content
             int expectedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length") != null ?
@@ -254,12 +215,10 @@ public class MultipartAttachmentReader extends OutputStream {
     }
 
     private void startNewSection() throws FileNotFoundException, IOException {
+        Map.Entry<String, Object> att = getAttachmentForCurrentSection();
 
-        currentSection = new Section();
-
-        if (section > 0 && section-1 < orderedAttachments.size()) {
+        if (att != null) {
             // get attachment for this section
-            Map.Entry<String, Object> att = orderedAttachments.get(section -1);
             String encoding = (String)((Map<String, Object>)(att.getValue())).get("encoding");
             boolean compressed = "gzip".equals(encoding);
             currentSection.encoding = encoding;
@@ -267,7 +226,7 @@ public class MultipartAttachmentReader extends OutputStream {
                     ((Map<String, Object>)(att.getValue())).get("encoded_length") :
                     ((Map<String, Object>)(att.getValue())).get("length"));
             // cook up a temp filename until we know what the real one is
-            currentSection.tempFilename = new File(attachmentsDirectory, "tempfile"+section).toString();
+            currentSection.tempFilename = new File(attachmentsDirectory, "tempfile"+ currentSectionIndex).toString();
             currentSection.stream = new FileOutputStream(currentSection.tempFilename);
             currentSection.limit = expectedLength;
             // skip crlfcrlf
@@ -275,12 +234,13 @@ public class MultipartAttachmentReader extends OutputStream {
         } else {
             currentSection.stream = new ByteArrayOutputStream();
         }
-        sections.add(currentSection);
-        section++;
     }
 
     private void processExistingSectionAndStartNewSection() throws FileNotFoundException, IOException {
         processExistingSection();
+        sections.add(currentSection);
+        currentSection = new Section();
+        currentSectionIndex++;
         startNewSection();
     }
 
@@ -288,5 +248,85 @@ public class MultipartAttachmentReader extends OutputStream {
         return boundaryCount;
     }
 
+    public int getSignalledAttachmentCount() {
+        return signalledAttachmentCount;
+    }
 
+    public int getActualAttachmentCount() {
+        return actualAttachmentCount;
+    }
+
+    //
+    // helper classes
+    //
+
+    // for matching boundaries
+
+    private class Matcher {
+        private byte[] toMatch;
+        private byte[] circularBuffer;
+        private int off = 0;
+
+        public Matcher(byte[] toMatch) {
+            this.toMatch = toMatch;
+            this.circularBuffer = new byte[toMatch.length];
+        }
+
+        // put the next byte into the circular buffer and see if we have a match yet
+        public boolean match(byte c) {
+            circularBuffer[off++] = c;
+            off %= toMatch.length;
+            for (int i=0; i<toMatch.length; i++) {
+                if (toMatch[i] != circularBuffer[(i+off) % toMatch.length])
+                    return false;
+            }
+            return true;
+        }
+    }
+
+    // for writing out sections (body and attachments)
+
+    protected class Section {
+        public Section() throws IOException {
+            limit = -1;
+            try {
+                md5 = MessageDigest.getInstance("MD5");
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException("Cannot initialise MD5");
+            }
+        }
+        public void write(byte[] input, int offset, int len) throws IOException {
+            int curSkip = Math.min(len, skip);
+            int nextSkip = skip - curSkip;
+            if (nextSkip > 0) {
+                skip = nextSkip;
+            } else {
+                skip = 0;
+            }
+            offset += curSkip;
+            len -= curSkip;
+            // would we go over our limit?
+            if (limit != -1 && bytesWritten + len > limit) {
+                len = (limit - bytesWritten);
+                len = Math.max(0, len);
+            }
+            if (stream != null) {
+                bytesWritten += len;
+                stream.write(input, offset, len);
+                if (md5 != null) {
+                    md5.update(input, offset, len);
+                }
+            }
+        }
+        public int skip;
+        public int limit;
+        public int bytesWritten;
+        public MessageDigest md5;
+        public String tempFilename;
+        public String filename;
+        public OutputStream stream;
+        public String encoding;
+        public Exception error;
+        public String toString(){return stream.toString();}
+    }
 }
