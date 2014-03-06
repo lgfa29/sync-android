@@ -30,7 +30,6 @@ public class MultipartAttachmentReaderTests {
             while ((nRead = fis.read(buf)) > 0) {
                 mpr.write(buf, 0, nRead);
             }
-            System.out.println("bufsiz "+sizes[i]);
             Assert.assertEquals(1002, mpr.getBoundaryCount());
             Assert.assertEquals(1002, mpr.sections.size());
             Assert.assertEquals(mpr.getActualAttachmentCount(), mpr.getSignalledAttachmentCount());
@@ -56,6 +55,7 @@ public class MultipartAttachmentReaderTests {
         for (MultipartAttachmentReader.Section s : mpr.sections) {
             Assert.assertNull(s.error);
         }
+        System.out.println(mpr.sections);
     }
 
 

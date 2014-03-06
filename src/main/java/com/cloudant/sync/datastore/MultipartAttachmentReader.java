@@ -92,7 +92,6 @@ public class MultipartAttachmentReader extends OutputStream {
             if (boundaryMatcher.match(b[i])) {
                 boundaries.add(i+1);
                 boundaryCount++;
-                System.out.println("Matched at off " + i);
             }
         }
 
@@ -146,9 +145,7 @@ public class MultipartAttachmentReader extends OutputStream {
         // - check the md5
         // - decompress if needed
 
-        Map.Entry<String, Object> att = getAttachmentForCurrentSection();
-
-        if (att == null) {
+        if (currentSectionIndex == 1) {
             // json payload
             byte[] bodyBytes = ((ByteArrayOutputStream)currentSection.stream).toByteArray();
             String str = new String(bodyBytes);
@@ -158,36 +155,29 @@ public class MultipartAttachmentReader extends OutputStream {
                 // payload starts at the end of this match and goes up to the start of the boundary
                 int start = m.end();
                 int length = bodyBytes.length - boundary.length - start -2; // -2 for crlf
-                // just for printing...
                 byte[] payload = new byte[length];
                 System.arraycopy(bodyBytes, start, payload, 0, length);
-                System.out.println(payload);
                 json = JSONUtils.deserialize(payload);
                 for (Map.Entry<String, Object> o: ((Map<String, Object>)json.get("_attachments")).entrySet()) {
                     orderedAttachments.add(o);
                     signalledAttachmentCount++;
                 }
             }
-        } else {
+        } else if (currentSectionIndex > 1){
             // get attachment for this offset
-            System.out.println("Looking at "+att.getKey());
             actualAttachmentCount++;
-            currentSection.filename = att.getKey();
-            int sectionLength = currentSection.bytesWritten; // two crlfs (skipped) after boundary, one after content
-            int expectedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length") != null ?
-                    ((Map<String, Object>)(att.getValue())).get("encoded_length") :
-                    ((Map<String, Object>)(att.getValue())).get("length"));
 
             // check length
-            if (expectedLength != sectionLength) {
-                currentSection.error = new Exception("Actual length of " + sectionLength + " bytes did not match expected length of " + expectedLength + " bytes.");
+            int expectedLength = currentSection.encoding == null ? currentSection.length : currentSection.encodedLength;
+            if (expectedLength != currentSection.bytesWritten) {
+                currentSection.error = new Exception("Actual length of " + currentSection.bytesWritten + " bytes did not match expected length of " + expectedLength + " bytes.");
                 return;
             }
 
             // check MD5
             byte[] actualMd5 = currentSection.md5.digest();
             String actualMd5Str = "md5-"+(new BASE64Encoder().encode(actualMd5));
-            String expectedMd5Str = (String)((Map<String, Object>)(att.getValue())).get("digest");
+            String expectedMd5Str = currentSection.digest;
             if (!actualMd5Str.equals(expectedMd5Str)) {
                 currentSection.error = new Exception("Actual MD5 of " + actualMd5Str + " did not match expected MD5 of " + expectedMd5Str + ".");
                 return;
@@ -215,19 +205,25 @@ public class MultipartAttachmentReader extends OutputStream {
     }
 
     private void startNewSection() throws FileNotFoundException, IOException {
+        // get attachment for this section
         Map.Entry<String, Object> att = getAttachmentForCurrentSection();
 
         if (att != null) {
-            // get attachment for this section
-            String encoding = (String)((Map<String, Object>)(att.getValue())).get("encoding");
-            boolean compressed = "gzip".equals(encoding);
-            currentSection.encoding = encoding;
-            int expectedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length") != null ?
-                    ((Map<String, Object>)(att.getValue())).get("encoded_length") :
-                    ((Map<String, Object>)(att.getValue())).get("length"));
+            // fill in details for this section from _attachments
+            currentSection.attachmentName = att.getKey();
+            currentSection.contentType = (String)(((Map<String, Object>)(att.getValue())).get("content_type"));
+            currentSection.encoding = (String)((Map<String, Object>)(att.getValue())).get("encoding");
+            currentSection.length = (Integer)(((Map<String, Object>)(att.getValue())).get("length"));
+            if (currentSection.encoding != null) {
+                currentSection.encodedLength = (Integer)(((Map<String, Object>)(att.getValue())).get("encoded_length"));
+            }
+            currentSection.digest = (String)((Map<String, Object>)(att.getValue())).get("digest");
+
             // cook up a temp filename until we know what the real one is
             currentSection.tempFilename = new File(attachmentsDirectory, "tempfile"+ currentSectionIndex).toString();
             currentSection.stream = new FileOutputStream(currentSection.tempFilename);
+
+            int expectedLength = currentSection.encoding == null ? currentSection.length : currentSection.encodedLength;
             currentSection.limit = expectedLength;
             // skip crlfcrlf
             currentSection.skip = 4;
@@ -318,15 +314,29 @@ public class MultipartAttachmentReader extends OutputStream {
                 }
             }
         }
-        public int skip;
-        public int limit;
-        public int bytesWritten;
-        public MessageDigest md5;
-        public String tempFilename;
-        public String filename;
-        public OutputStream stream;
-        public String encoding;
-        public Exception error;
+
+        // from json _attachments:
+        public String attachmentName; // actual name
+        public String contentType; // mime content type
+        public int length;
+        public int encodedLength; // only valid if encoding != null
+        public String encoding; // null/gzip/other?
+        public String digest;
+
+        // other public stuff:
+        public Exception error; // null if ok
         public String toString(){return stream.toString();}
+
+        // don't write < skip, > limit
+        private int skip;
+        private int limit;
+        // to verify it was the size it was supposed to be
+        private int bytesWritten;
+
+        private String tempFilename; // whilst writing
+        private String filename; // after writing and decompressing, based on SHA-1
+
+        private MessageDigest md5; // whilst writing, calculate md5
+        private OutputStream stream; // stream to write to (probably file)
     }
 }
