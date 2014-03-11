@@ -2,25 +2,35 @@ package com.cloudant.sync.datastore;
 
 import com.cloudant.sync.util.JSONUtils;
 
+import org.apache.commons.codec.binary.Base64;
+
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.security.DigestException;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
-
-import sun.misc.BASE64Encoder;
 
 /**
  * Created by tomblench on 24/02/2014.
  */
+
+// DocumentRevision setAttachments(DocumentRevision rev, List<Attachment> attachments);
+
+/*
+* Take a revision:
+* - It has had setAttachments called on it already
+* - With _attachments pre-populated
+* - Each attachment has content_type, length, digest
+* - Go thru the attachments dictionary in order
+* - Get the attachment out of the blob store
+*
+*/
+
+
+
 public class MultipartAttachmentWriter extends InputStream {
 
     MultipartAttachmentWriter(Datastore datastore, DocumentRevision revision, List<Attachment> attachments) {
@@ -37,7 +47,7 @@ public class MultipartAttachmentWriter extends InputStream {
             att.put("follows", true);
             att.put("content_type", a.contentType);
             att.put("length",a.length);
-            att.put("digest","md5-"+(new BASE64Encoder().encode(a.md5)));
+            att.put("digest","md5-"+new String((new Base64().encode(a.md5))));
         }
 
         DocumentBody newBody = DocumentBodyFactory.create(map);
