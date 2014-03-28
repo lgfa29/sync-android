@@ -1187,17 +1187,21 @@ class BasicDatastore implements Datastore, DatastoreExtended {
     }
 
     @Override
-    public SavedAttachment getAttachment(DocumentRevision rev, String attachmentName) {
+    public Attachment getAttachment(DocumentRevision rev, String attachmentName) {
         // facade to attachmentmanager
         return this.attachmentManager.getAttachment(rev, attachmentName);
     }
 
     @Override
-    public List<SavedAttachment> getAttachments(DocumentRevision rev) {
+    public List<? extends Attachment> getAttachments(DocumentRevision rev) {
         // facade to attachmentmanager
         return this.attachmentManager.getAttachments(rev);
     }
 
+    @Override
+    public DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName) {
+        return this.attachmentManager.removeAttachment(rev, attachmentName);
+    }
 
     @Override
     public EventBus getEventBus() {

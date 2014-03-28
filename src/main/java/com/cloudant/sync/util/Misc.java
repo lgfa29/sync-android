@@ -18,6 +18,7 @@ import android.os.Build;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.security.MessageDigest;
 import java.util.UUID;
 
@@ -41,14 +42,12 @@ public class Misc {
         return String.format("Android %s %s", Build.VERSION.CODENAME, Build.VERSION.SDK_INT);
     }
 
-    public static byte[] getSha1(File f) {
-        FileInputStream shaFis = null;
+    public static byte[] getSha1(InputStream shaFis) {
         MessageDigest sha1;
         try {
             sha1 = MessageDigest.getInstance("SHA-1");
             int bufSiz = 1024;
             byte buf[] = new byte[bufSiz];
-            shaFis = new FileInputStream(f);
             int bytesRead;
             while ((bytesRead = shaFis.read(buf)) != -1) {
                 sha1.update(buf, 0, bytesRead);
@@ -59,7 +58,7 @@ public class Misc {
         return sha1.digest();
     }
 
-    public static byte[] getMd5(File f) {
+    public static byte[] getMd5(InputStream md5Fis) {
         // TODO
         byte[] md5 = null;
         return md5;

@@ -331,20 +331,18 @@ public interface Datastore {
         throws ConflictException;
 
     /**
-     Returns the names of attachments for a document revision.
-
-     @return NSArray of NSString
+     * Returns attachment `attachmentName` for the revision.
+     *
+     * @return SavedAttachment or null no attachment with that name.
      */
-//    List<String> attachmentsForRevision(DocumentRevision rev);
+    Attachment getAttachment(DocumentRevision rev, String attachmentName);
 
     /**
-     Returns attachment `name` for the revision, creating a new revision.
-
-     @return CDTAttachment or nil no attachment with that name.
+     * Returns all attachments revision, creating a new revision.
+     *
+     * @return SavedAttachment or null no attachment with that name.
      */
-    SavedAttachment getAttachment(DocumentRevision rev, String attachmentName);
-
-    List<SavedAttachment> getAttachments(DocumentRevision rev);
+    List<? extends Attachment> getAttachments(DocumentRevision rev);
 
     /**
      Set the content of attachments on a document, creating
@@ -361,10 +359,9 @@ public interface Datastore {
 
     /**
      Remove attachment `name` from a document, creating a new revision.
-
      @return New revision.
      */
-//    DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName);
+    DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName);
 
     /**
      * Close the datastore

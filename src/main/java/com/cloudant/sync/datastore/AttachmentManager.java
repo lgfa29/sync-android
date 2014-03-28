@@ -12,6 +12,7 @@ import org.apache.commons.io.FileUtils;
 import java.io.File;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -65,17 +66,15 @@ public class AttachmentManager {
         // add attachment to db linked to this revision
 
         for (Attachment a : attachments) {
-            if (a instanceof UnsavedFileAttachment) {
-                UnsavedFileAttachment ufa = (UnsavedFileAttachment) a;
-                byte[] md5 = Misc.getMd5(ufa.file);
+                byte[] md5 = Misc.getMd5(a.getInputStream());
 
                 ContentValues values = new ContentValues();
                 long sequence = newDocument.getSequence();
-                String filename = ufa.file.getName();
-                byte[] sha1 = Misc.getSha1(ufa.file);
-                String type = ufa.type;
+                String filename = a.name;
+                byte[] sha1 = Misc.getSha1(a.getInputStream());
+                String type = a.type;
                 int encoding = Encoding.Plain.ordinal();
-                long length = ufa.file.length();
+                long length = a.size;
                 long revpos = CouchUtils.generationFromRevId(newDocument.getRevision());
 
                 values.put("sequence", sequence);
@@ -95,18 +94,15 @@ public class AttachmentManager {
                 }
                 // move file to blob store, with file name based on sha1
                 File newFile = fileFromKey(sha1);
-                FileUtils.copyFile(ufa.file, newFile);
-            } else {
-                Log.e(LOG_TAG, "Attachment " + a + " is not an instance of UnsavedFileAttachment");
-            }
+                FileUtils.copyInputStreamToFile(a.getInputStream(), newFile);
         }
         return newDocument;
     }
 
     // TODO get most recent attachment (by sequence) at or below this sequence number? what about revpos?
-    public SavedAttachment getAttachment(DocumentRevision rev, String attachmentName) {
+    public Attachment getAttachment(DocumentRevision rev, String attachmentName) {
         try {
-            Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT, new String[]{attachmentName, "" + rev.getSequence()});
+            Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT, new String[]{attachmentName, String.valueOf(rev.getSequence())});
             if (c.moveToFirst()) {
                 int sequence = c.getInt(0);
                 byte[] key = c.getBlob(2);
@@ -121,14 +117,15 @@ public class AttachmentManager {
             return null;
         }
     }
-    public List<SavedAttachment> getAttachments(DocumentRevision rev) {
+
+    public List<? extends Attachment> getAttachments(DocumentRevision rev) {
         return this.getAttachments(rev.getSequence());
     }
 
-    public List<SavedAttachment> getAttachments(long sequence) {
+    public List<? extends Attachment> getAttachments(long sequence) {
         try {
             LinkedList<SavedAttachment> atts = new LinkedList<SavedAttachment>();
-            Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT_ALL, new String[]{""+sequence});
+            Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT_ALL, new String[]{String.valueOf(sequence)});
             while (c.moveToNext()) {
                 String name = c.getString(1);
                 byte[] key = c.getBlob(2);
@@ -144,12 +141,38 @@ public class AttachmentManager {
         }
     }
 
-    protected File fileFromKey(byte[] key) {
+    public DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName) {
+
+        // first see if it exists
+        SavedAttachment a = (SavedAttachment)this.getAttachment(rev, attachmentName);
+        if (a == null) {
+            return null;
+        }
+        // get the file in blob store
+        File f = this.fileFromKey(a.key);
+
+        // make a new rev for the version with attachment removed
+        DocumentRevision newRev = null;
+        try {
+            newRev = datastore.updateDocument(rev.getId(), rev.getRevision(), rev.getBody());
+        } catch (ConflictException ce) {
+            // can't delete due to conflict
+            return null;
+        }
+
+        // delete att from database table
+        datastore.getSQLDatabase().delete("attachments", " filename = ? and sequence = ? ", new String[]{attachmentName, String.valueOf(rev.getSequence())});
+
+        // delete attachments from blob store
+        f.delete();
+
+        return newRev;
+    }
+
+        protected File fileFromKey(byte[] key) {
         File file = new File(attachmentsDir, new String(new Hex().encode(key)));
         return file;
     }
-
-
 
 }
 
