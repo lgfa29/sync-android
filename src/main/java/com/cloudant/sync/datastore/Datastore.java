@@ -342,7 +342,7 @@ public interface Datastore {
      *
      * @return SavedAttachment or null no attachment with that name.
      */
-    List<? extends Attachment> getAttachments(DocumentRevision rev);
+    List<? extends Attachment> attachmentsForRevision(DocumentRevision rev);
 
     /**
      Set the content of attachments on a document, creating
@@ -355,13 +355,13 @@ public interface Datastore {
 
      @return New revision.
      */
-    DocumentRevision setAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException;
+    DocumentRevision updateAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException;
 
     /**
      Remove attachment `name` from a document, creating a new revision.
      @return New revision.
      */
-    DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName);
+    DocumentRevision removeAttachments(DocumentRevision rev, String[] attachmentNames) throws ConflictException;
 
     /**
      * Close the datastore

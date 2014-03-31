@@ -41,14 +41,12 @@ public class AttachmentManager {
         Plain
     }
 
-    ;
-
     public AttachmentManager(BasicDatastore datastore) {
         this.datastore = datastore;
         this.attachmentsDir = datastore.extensionDataFolder(EXTENSION_NAME);
     }
 
-    public DocumentRevision setAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException {
+    public DocumentRevision updateAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException {
         // add attachments and then return new revision
 
         // make a new rev for the version with attachments
@@ -99,7 +97,6 @@ public class AttachmentManager {
         return newDocument;
     }
 
-    // TODO get most recent attachment (by sequence) at or below this sequence number? what about revpos?
     public Attachment getAttachment(DocumentRevision rev, String attachmentName) {
         try {
             Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT, new String[]{attachmentName, String.valueOf(rev.getSequence())});
@@ -118,11 +115,11 @@ public class AttachmentManager {
         }
     }
 
-    public List<? extends Attachment> getAttachments(DocumentRevision rev) {
-        return this.getAttachments(rev.getSequence());
+    public List<? extends Attachment> attachmentsForRevision(DocumentRevision rev) {
+        return this.attachmentsForRevision(rev.getSequence());
     }
 
-    public List<? extends Attachment> getAttachments(long sequence) {
+    public List<? extends Attachment> attachmentsForRevision(long sequence) {
         try {
             LinkedList<SavedAttachment> atts = new LinkedList<SavedAttachment>();
             Cursor c = datastore.getSQLDatabase().rawQuery(SQL_ATTACHMENTS_SELECT_ALL, new String[]{String.valueOf(sequence)});
@@ -141,32 +138,35 @@ public class AttachmentManager {
         }
     }
 
-    public DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName) {
+    public DocumentRevision removeAttachments(DocumentRevision rev, String[] attachmentNames) throws ConflictException {
 
-        // first see if it exists
-        SavedAttachment a = (SavedAttachment)this.getAttachment(rev, attachmentName);
-        if (a == null) {
-            return null;
+        int nDeleted = 0;
+
+        for (String attachmentName : attachmentNames) {
+            // first see if it exists
+            SavedAttachment a = (SavedAttachment) this.getAttachment(rev, attachmentName);
+            if (a == null) {
+                continue;
+            }
+            // get the file in blob store
+            File f = this.fileFromKey(a.key);
+
+            // delete att from database table
+            datastore.getSQLDatabase().delete("attachments", " filename = ? and sequence = ? ", new String[]{attachmentName, String.valueOf(rev.getSequence())});
+
+            // delete attachments from blob store
+            f.delete();
+
+            nDeleted++;
         }
-        // get the file in blob store
-        File f = this.fileFromKey(a.key);
 
-        // make a new rev for the version with attachment removed
-        DocumentRevision newRev = null;
-        try {
-            newRev = datastore.updateDocument(rev.getId(), rev.getRevision(), rev.getBody());
-        } catch (ConflictException ce) {
-            // can't delete due to conflict
-            return null;
+        if (nDeleted > 0) {
+            // return a new rev for the version with attachment removed
+            return datastore.updateDocument(rev.getId(), rev.getRevision(), rev.getBody());
         }
 
-        // delete att from database table
-        datastore.getSQLDatabase().delete("attachments", " filename = ? and sequence = ? ", new String[]{attachmentName, String.valueOf(rev.getSequence())});
-
-        // delete attachments from blob store
-        f.delete();
-
-        return newRev;
+        // nothing deleted, just return the same rev
+        return rev;
     }
 
         protected File fileFromKey(byte[] key) {

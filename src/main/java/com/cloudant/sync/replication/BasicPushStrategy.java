@@ -263,7 +263,7 @@ class BasicPushStrategy implements ReplicationStrategy {
                 List<DocumentRevision> path = tree.getPathForNode(sequence);
                 // NB this will probably look like AttachmentHistoryHelper.....() later
                 DocumentRevision dr = path.get(0);
-                List<? extends Attachment> atts = this.sourceDb.getDbCore().getAttachments(dr);
+                List<? extends Attachment> atts = this.sourceDb.getDbCore().attachmentsForRevision(dr);
                 // need to graft on _attachments somehow
                 // need to stub out attachments for in between versions
                 docs.add(RevisionHistoryHelper.revisionHistoryToJson(path, atts));

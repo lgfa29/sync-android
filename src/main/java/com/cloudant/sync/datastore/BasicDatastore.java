@@ -1181,9 +1181,9 @@ class BasicDatastore implements Datastore, DatastoreExtended {
     }
 
     @Override
-    public DocumentRevision setAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException {
+    public DocumentRevision updateAttachments(DocumentRevision rev, List<? extends Attachment> attachments) throws ConflictException, IOException {
         // facade to attachmentmanager
-        return this.attachmentManager.setAttachments(rev, attachments);
+        return this.attachmentManager.updateAttachments(rev, attachments);
     }
 
     @Override
@@ -1193,14 +1193,14 @@ class BasicDatastore implements Datastore, DatastoreExtended {
     }
 
     @Override
-    public List<? extends Attachment> getAttachments(DocumentRevision rev) {
+    public List<? extends Attachment> attachmentsForRevision(DocumentRevision rev) {
         // facade to attachmentmanager
-        return this.attachmentManager.getAttachments(rev);
+        return this.attachmentManager.attachmentsForRevision(rev);
     }
 
     @Override
-    public DocumentRevision removeAttachment(DocumentRevision rev, String attachmentName) {
-        return this.attachmentManager.removeAttachment(rev, attachmentName);
+    public DocumentRevision removeAttachments(DocumentRevision rev, String[] attachmentNames) throws ConflictException {
+        return this.attachmentManager.removeAttachments(rev, attachmentNames);
     }
 
     @Override

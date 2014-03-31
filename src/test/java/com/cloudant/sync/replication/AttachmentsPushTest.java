@@ -117,7 +117,7 @@ public class AttachmentsPushTest extends ReplicationTestBase {
         DocumentRevision newRevision = null;
         try {
             // set attachment
-            newRevision = datastore.setAttachments(oldRevision, atts);
+            newRevision = datastore.updateAttachments(oldRevision, atts);
         } catch (IOException ioe) {
             Assert.fail("IOException thrown: " + ioe);
         }
@@ -149,7 +149,7 @@ public class AttachmentsPushTest extends ReplicationTestBase {
         DocumentRevision rev2 = null;
         try {
             // set attachment
-            rev2 = datastore.setAttachments(rev1, atts1);
+            rev2 = datastore.updateAttachments(rev1, atts1);
         } catch (IOException ioe) {
             Assert.fail("IOException thrown: "+ioe);
         }
@@ -165,7 +165,7 @@ public class AttachmentsPushTest extends ReplicationTestBase {
         DocumentRevision rev4 = null;
         try {
             // set attachment
-            rev4 = datastore.setAttachments(rev3, atts2);
+            rev4 = datastore.updateAttachments(rev3, atts2);
         } catch (IOException ioe) {
             Assert.fail("IOException thrown: "+ioe);
         }
