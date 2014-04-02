@@ -35,9 +35,14 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.eventbus.EventBus;
+
+import org.apache.commons.codec.binary.Base64InputStream;
 import org.apache.commons.io.FilenameUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -759,7 +764,7 @@ class BasicDatastore implements Datastore, DatastoreExtended {
 
 
     @Override
-    public void forceInsert(DocumentRevision rev, List<String> revisionHistory) {
+    public void forceInsert(DocumentRevision rev, List<String> revisionHistory, Map<String, Object> attachments) {
         Preconditions.checkState(this.isOpen(), "Database is closed");
         Preconditions.checkNotNull(rev, "Input document revision can not be null");
         Preconditions.checkNotNull(revisionHistory, "Input revision history must not be null");
@@ -786,6 +791,21 @@ class BasicDatastore implements Datastore, DatastoreExtended {
                 // TODO fetch the parent doc?
                 documentUpdated = new DocumentUpdated(null, rev);
             }
+            // now deal with any attachments
+            if (attachments != null) {
+                for (String att : attachments.keySet()) {
+                    String data = (String)((Map<String,Object>)attachments.get(att)).get("data");
+                    InputStream is = new Base64InputStream(new ByteArrayInputStream(data.getBytes()));
+                    String type = (String)((Map<String,Object>)attachments.get(att)).get("type");
+                    UnsavedFileAttachment ufa = new UnsavedFileAttachment(is, att, type);
+                    try {
+                        this.attachmentManager.addAttachment(ufa, rev);
+                    } catch (Exception e) {
+                        System.out.println("Problem adding attachment! "+e);
+                    }
+                }
+            }
+
             this.sqlDb.setTransactionSuccessful();
         } finally {
             this.sqlDb.endTransaction();
@@ -801,7 +821,7 @@ class BasicDatastore implements Datastore, DatastoreExtended {
     @Override
     public void forceInsert(DocumentRevision rev, String... revisionHistory) {
         Preconditions.checkState(this.isOpen(), "Database is closed");
-        this.forceInsert(rev, Arrays.asList(revisionHistory));
+        this.forceInsert(rev, Arrays.asList(revisionHistory), null);
     }
 
     private boolean checkRevisionIsInCorrectOrder(List<String> revisionHistory) {
