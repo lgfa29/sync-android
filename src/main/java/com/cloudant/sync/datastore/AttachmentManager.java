@@ -87,6 +87,8 @@ public class AttachmentManager {
         values.put("encoded_length", length);
         values.put("revpos", revpos);
 
+        // delete and insert in case there is already an attachment at this seq (eg copied over from a previous rev)
+        datastore.getSQLDatabase().delete("attachments", " filename = ? and sequence = ? ", new String[]{filename, String.valueOf(sequence)});
         long result = datastore.getSQLDatabase().insert("attachments", values);
         if (result == -1) {
             // if we can't insert into DB then don't copy the attachment
